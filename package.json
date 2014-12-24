@@ -1,11 +1,17 @@
 {
   "name": "jrex",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "jrex is a command line search-and-replace tool written in Javascript with node.js",
-  "main": "stdin_regex.js",
+  "author": "Malthe Jørgensen <malthe.jorgensen@gmail.com>",
+  "bin": {
+    "jrex": "./bin/jrex"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/malthejorgensen/jrex"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "Malthe Jørgensen",
   "license": "BSD 2-clause"
 }
