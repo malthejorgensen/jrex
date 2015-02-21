@@ -1,25 +1,40 @@
 #!/usr/bin/env node
 
+'use strict'
+
 var DEBUG = false;
 var MODE = 'search';
+var EXT_SAVE = '.jrex';
+var EXIT_STATUS = 1;
 
-if (DEBUG) {
-  process.argv.forEach(function(val, i, arr) {
-    console.log(val);
-  });
-}
+var fs = require('fs');
 
-// Ignore the two first args: "node" and "stdin_regex.js"
-if (process.argv[2] === undefined) {
+// TODO: Detect pipe, e.g. `echo hello world | jrex world -i computer`
+//       (http://stackoverflow.com/a/15485424/118608)
+
+var getopt = require('node-getopt').create([
+  ['r', 'replace=ARG', 'Replacement string'],
+  ['s', 'save-extension=ARG', 'File extension for searched-and-replaced files (default: .jrex)'],
+]).parseSystem();
+
+
+if (getopt.argv[0] === undefined) {
   process.stderr.write('You must supply a regex as the first command line argument');
   process.exit(1);
 }
-if (process.argv[3] !== undefined) {
+if (getopt.options.replace !== undefined) {
   MODE = 'replace';
-  var str_replace = process.argv[3].replace(/\\n/g, '\n');
-  // process.stderr.write('You must supply a replacement str as the second command line argument');
-  // process.exit(1);
+  var str_replace = getopt.options['replace'].replace(/\\n/g, '\n');
 }
+if (getopt.options['save-extension'] !== undefined) {
+  EXT_SAVE = getopt.options['save-extension'];
+}
+if (EXT_SAVE == '') {
+  process.stderr.write('The search-replace extension is empty, this means search and replace will overwrite original files\n');
+  process.stderr.write('Are you sure you want to do this? [y/N]');
+}
+
+
 // When replacement string like "line1\nline2" is given as an cmdline argument
 // it is passed as "line1\\nline2". So we convert it to what the user expects.
 
@@ -28,7 +43,7 @@ try {
   // - 'g' global (default: off)
   // - 'm' multiline (default: off)
   // - 'i' ignore case (default: off)
-  var re = new RegExp(process.argv[2], 'g'); // our regex is global by default
+  var re = new RegExp(getopt.argv[0], 'g'); // our regex is global by default
 } catch (e)  {
   if (e instanceof SyntaxError) {
     process.stderr.write('Supplied regex was incorrect: ' + e.message);
@@ -37,39 +52,83 @@ try {
   }
 }
 
+var files = getopt.argv.slice(1);
+if (files[0] === '-') {
+  // Read from STDIN
+  process.stdin.setEncoding('utf8');
 
-process.stdin.resume();
-process.stdin.setEncoding('utf8');
+  var str_in = "";
 
-var str_in = "";
+  process.stdin.on('readable', function() {
+    var chunk = process.stdin.read();
+    if (chunk !== null) { str_in += chunk; }
+  });
 
-process.stdin.on('data', function(chunk) {
-  str_in += chunk;
-});
+  process.stdin.on('end', function() {
+    if (MODE === 'replace') {
+      var str_out = jrex_replace(str_in);
+      if (str_out !== str_in) { EXIT_STATUS = 0; }
+      process.stdout.write(str_out);
+    } else {
+      var hits = jrex_search(str_in);
+      if (hits.length > 0) { EXIT_STATUS = 0; }
+      jrex_print_hits(hits);
+    }
+    jrex_end();
+  });
+} else {
+  files.forEach(function(filename, i, arr) {
+    console.log('Replacing in "' + filename + '"');
+    var str_in = fs.readFileSync(filename, {encoding: 'utf-8'});
 
-process.stdin.on('end', function() {
-  if (MODE === 'replace') {
-    var str_out = str_in.replace(re, str_replace);
-    process.stdout.write(str_out);
-  } else { // if MODE === 'search'
-    var char_line = new Array(str_in.length);
-    var line_no = 1;
-    for (var i = 0; i < str_in.length; i++) {
-      char_line[i] = line_no;
-      if (str_in[i] === '\n') { line_no += 1; }
+    if (MODE === 'replace') {
+      var str_out = jrex_replace(str_in);
+      if (str_out !== str_in) { EXIT_STATUS = 0; }
+      fs.writeFileSync(filename + EXT_SAVE, str_out);
+    } else {
+      var hits = jrex_search(str_in);
+      if (hits.length > 0) { EXIT_STATUS = 0; }
+      jrex_print_hits(hits);
     }
 
-    var exit_status = 1;
+  });
+  jrex_end();
+}
 
-    while ( (result = re.exec(str_in)) ) {
-      process.stdout.write(char_line[result.index].toString() + ": " + result[0] + "\n");
-      // indices.push(result.index);
-      exit_status = 0;
-    }
 
-    // End process
-    // - return 0 if one or more matches were found
-    // - return 1 if no matches were found
-    process.exit(exit_status);
+function jrex_end() {
+  // End process
+  // - return 0 if one or more matches were found
+  // - return 1 if no matches were found
+  process.exit(EXIT_STATUS);
+}
+
+function jrex_print_hits(hits) {
+  hits.forEach(function(h, i, arr) {
+    var line  = h[0];
+    var match = h[1];
+    process.stdout.write(line.toString() + ": " + match + "\n");
+  });
+}
+
+function jrex_replace(str_in) {
+  var str_out = str_in.replace(re, str_replace);
+  return str_out;
+}
+
+function jrex_search(str_in) {
+  var char_line = new Array(str_in.length);
+  var line_no = 1;
+  for (var i = 0; i < str_in.length; i++) {
+    char_line[i] = line_no;
+    if (str_in[i] === '\n') { line_no += 1; }
   }
-});
+  var hit;
+  var hits = [];
+  while ( (hit = re.exec(str_in)) ) {
+    var line = char_line[hit.index];
+    var match = hit[0];
+    hits.push([line, match]);
+  }
+  return hits;
+}
