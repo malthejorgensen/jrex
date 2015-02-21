@@ -1,6 +1,6 @@
 {
   "name": "jrex",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "jrex is a command line search-and-replace tool written in Javascript with node.js",
   "author": "Malthe Jørgensen <malthe.jorgensen@gmail.com>",
   "bin": {
@@ -15,6 +15,6 @@
   },
   "license": "BSD 2-clause",
   "dependencies": {
-    "node-getopt": "^0.2.3"
+    "commander": "^2.6.0"
   }
 }
